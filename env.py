@@ -5,11 +5,6 @@ import numpy as np
 import math
 from asciimatics.screen import Screen
 
-random.seed(0)
-
-MAX_TRAFFIC_LIGHTS = 1
-MAX_CARS = 10
-MAX_PED = 2
 class World(object) :
     line_alloc = [1,2,2,1,1] #side_walk, road, road, side_walk, traffic_light
     line_range = [[0],[1,2],[3,4],[5],[6]]
@@ -29,6 +24,7 @@ class World(object) :
     def add_obj(self,obj) :
         assert(isinstance(obj,GameObject))
         self.objects.append(obj)
+        return self
 
     def tick(self) :
         # Tick
@@ -115,7 +111,8 @@ class TrafficLights(GameObject) :
         if (isinstance(other,Car)):
             if( self.get_state() == 'red'
                and self._is_crossing(other,delta) ):
-                assert False,'Ticket!'
+                pass
+                #assert False,'Ticket!'
 
 class Movable(GameObject) :
     def __init__(self,x,y):
@@ -219,6 +216,31 @@ class Car(Movable) :
                 self.state = 'stop'
                 self.constraint_queue.append(lambda o: other.remove)
 
+class MyCar(Car) :
+    def __init__(self,x,y,v):
+        Car.__init__(self,x,y,v)
+    def repre(self) :
+        return {'colour':1} #my car is red colored!
+
+    #############
+    # Functions for reinforcement learning
+    #############
+    def interact(self,other,delta) :
+        # this function will be called every tick(fine-grained time steps)
+        # TODO: encode the state for timestep(coarse-grained), and accumulate
+        # reward for that time.
+        return NotImplemented
+    def get_state_and_reward(self,world) :
+        # This function should be called by reinforcement module(like SARSA
+        # algorithm) outside for every timestep.
+        return NotImplemented
+    def set_action(self,action) :
+        # This function will be called by reinforcement module(like SARSA
+        # algorithm) outside for every time-step. Decide the next action for
+        # next timestep.
+        assert action == 'go' or action == 'stop'
+        self.state = action
+
 class Pedestrian(Movable) :
     def __init__(self,x=None,y=None,time_schedule=[1,999,1]): #cross_speed=1
         x = x or random.randint(10,World.road_length-10)
@@ -253,39 +275,37 @@ class Pedestrian(Movable) :
     def interact(self,other,delta) :
         if (isinstance(other,Car) and
             self._is_squashing_me(other,delta) ):
-            assert False,'I am dead :('
+            pass
+            #assert False,'I am dead :('
 
-class MyCar(Car) :
-    def __init__(self,x,y):
-        Car.__init__(self,x,y)
-
-world = World()
-world.add_obj(TrafficLights(x=10,time_schedule=[1,1,2]))
-#world.add_obj(TrafficLights(x=10))
-world.add_obj(TrafficLights(x=70,time_schedule=[1,4,4]))
-def main_loop(screen) :
-    def _seconds(s,continuous=True) :
-        time = 0.0
-        while(time <= s) :
-            world.tick();world.draw(screen);
-            if(continuous) : screen.refresh()
-            time += world.time_step
-        screen.refresh();
-    world.draw_lines(screen)
-    go = True
-    while(True) :
-        ev = screen.get_key()
-        if ev in [ord('q')] :
-            return
-        elif ev in [ord('s')] and not go:
-            _seconds(1,continuous=False)
-        elif ev in [ord('g')]:
-            go = not go
-        elif ev in [ord('p')]:
-            world.add_obj(Pedestrian())
-        elif ev in [ord('c')]:
-            world.add_obj(Car())
-        if go :
-            _seconds(1)
-Screen.wrapper(main_loop,arguments=[])
-print '*****Debug Information*****'
+if __name__ == "__main__":
+    world = World()
+    world.add_obj(TrafficLights(x=10,time_schedule=[1,1,2]))
+    #world.add_obj(TrafficLights(x=10))
+    world.add_obj(TrafficLights(x=70,time_schedule=[1,4,4]))
+    def main_loop(screen) :
+        def _seconds(s,continuous=True) :
+            time = 0.0
+            while(time <= s) :
+                world.tick();world.draw(screen);
+                if(continuous) : screen.refresh()
+                time += world.time_step
+            screen.refresh();
+        world.draw_lines(screen)
+        go = True
+        while(True) :
+            ev = screen.get_key()
+            if ev in [ord('q')] :
+                return
+            elif ev in [ord('s')] and not go:
+                _seconds(1,continuous=False)
+            elif ev in [ord('g')]:
+                go = not go
+            elif ev in [ord('p')]:
+                world.add_obj(Pedestrian())
+            elif ev in [ord('c')]:
+                world.add_obj(Car())
+            if go :
+                _seconds(1)
+    Screen.wrapper(main_loop,arguments=[])
+    print '*****Debug Information*****'
