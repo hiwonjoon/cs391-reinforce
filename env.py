@@ -5,6 +5,10 @@ import numpy as np
 import math
 from asciimatics.screen import Screen
 
+class ViolateRule(Exception) :
+    def __init__(self,message):
+        self.message = message
+
 class World(object) :
     line_alloc = [1,2,2,1,1] #side_walk, road, road, side_walk, traffic_light
     line_range = [[0],[1,2],[3,4],[5],[6]]
@@ -21,6 +25,9 @@ class World(object) :
         self.time_step = time_step
         self.objects = []
 
+        #debug message
+        self.message = []
+
     def add_obj(self,obj) :
         assert(isinstance(obj,GameObject))
         self.objects.append(obj)
@@ -33,11 +40,16 @@ class World(object) :
         for obj_a in self.objects :
             for obj_b in self.objects :
                 if( obj_a == obj_b ) : continue
-                obj_a.interact(obj_b,self.time_step)
+                try :
+                    obj_a.interact(obj_b,self.time_step)
+                except ViolateRule as e :
+                    self.message.append(e.message)
+
         # Constraint Check(Interaction with wall..) or Delteable Object
         for obj in self.objects: pass #TODO: Nothing to do for now.
         self.objects = [obj for obj in self.objects if not obj.remove]
         self.global_time += self.time_step
+        return self.time_step
 
     def draw_lines(self,screen) : # Let's draw lines/one time call
         _t = 0
@@ -61,6 +73,8 @@ class World(object) :
 
         # Debug Info
         screen.print_at('%3.3f Secs'%(self.global_time), self.road_length+1,0)
+        for i,msg in enumerate(self.message) :
+            screen.print_at(msg, self.road_length+1,i+1)
         #msg = '%s'%(current_map)
         #screen.print_at(msg,0,sum(self.line_alloc)+len(self.line_alloc)+1)
 
@@ -82,10 +96,10 @@ class GameObject(object) :
 
 class TrafficLights(GameObject) :
     light_color = [3,1,2]
-    def __init__(self,x,y=6,time_schedule=[2,5,5]):
+    def __init__(self,x,y=6,time_schedule=[2,5,5],start_time=0.0):
         GameObject.__init__(self,x,y)
         self.state = 0
-        self.time = 0.0
+        self.time = start_time
         self.time_schedule=time_schedule
     def tick(self,delta) :
         self.time += delta
@@ -111,8 +125,7 @@ class TrafficLights(GameObject) :
         if (isinstance(other,Car)):
             if( self.get_state() == 'red'
                and self._is_crossing(other,delta) ):
-                pass
-                #assert False,'Ticket!'
+                raise ViolateRule('Ticket!')
 
 class Movable(GameObject) :
     def __init__(self,x,y):
@@ -146,7 +159,7 @@ class Car(Movable) :
     def tick(self,delta) :
         # Update Speed
         if( self.state == 'go' ) :
-            self.vel += delta * 1.0
+            self.vel += delta * self.maximum_vel
         elif( self.state == 'stop' ) :
             self.vel += delta * -self.maximum_vel
         self.vel = max(min(self.maximum_vel, self.vel),0.0)
@@ -160,8 +173,7 @@ class Car(Movable) :
 
     def _predict_loc(self,future_secs) :
         pre = np.copy(self.real_loc)
-        #pre[0] += future_secs * self.vel * self.direction
-        pre[0] += future_secs * self.maximum_vel * self.direction
+        pre[0] += future_secs * self.vel * self.direction
         return pre
 
     def _is_in_front(self,car) : #Does I in front of other car?
@@ -201,7 +213,7 @@ class Car(Movable) :
                         self.constraint_queue.append(lambda o: other == o and other.get_state() == 'green')
         elif (isinstance(other,Car)):
             if( (other.loc == self.loc).all() ) :
-                assert False,'Car Crash!'
+                raise ViolateRule('Car Crash!')
             if( other.loc[1] == self.loc[1]) : # On the same lane
                 if( other._is_in_front(self) ) : #if other car is in front of me/TODO: since the road is cycle, it is not perfect.
                     # Check the safety distance
@@ -275,8 +287,7 @@ class Pedestrian(Movable) :
     def interact(self,other,delta) :
         if (isinstance(other,Car) and
             self._is_squashing_me(other,delta) ):
-            pass
-            #assert False,'I am dead :('
+            raise ViolateRule('Hit Person!')
 
 if __name__ == "__main__":
     world = World()
