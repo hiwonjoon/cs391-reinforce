@@ -231,21 +231,18 @@ class Car(Movable) :
 class MyCar(Car) :
     def __init__(self,x,y,v):
         Car.__init__(self,x,y,v)
+
+        # accumulated info for calculating reward
+        self._traffic_tickets = []
+        self._hit_pedestrians = []
+        self._hit_cars = []
+        self._prev_loc = self.loc
     def repre(self) :
         return {'colour':1} #my car is red colored!
 
     #############
     # Functions for reinforcement learning
     #############
-    def interact(self,other,delta) :
-        # this function will be called every tick(fine-grained time steps)
-        # TODO: encode the state for timestep(coarse-grained), and accumulate
-        # reward for that time.
-        return NotImplemented
-    def get_state_and_reward(self,world) :
-        # This function should be called by reinforcement module(like SARSA
-        # algorithm) outside for every timestep.
-        return NotImplemented
     def set_action(self,action) :
         # This function will be called by reinforcement module(like SARSA
         # algorithm) outside for every time-step. Decide the next action for
@@ -253,14 +250,36 @@ class MyCar(Car) :
         assert action == 'go' or action == 'stop'
         self.state = action
 
+    def interact(self,other,delta) :
+        # this function will be called every tick(fine-grained time steps)
+        # encode the state for timestep(coarse-grained), and accumulate
+        # accumulate information for reward.
+        if (isinstance(other,TrafficLights)) :
+            if( other.get_state() == 'red' and
+                other._is_crossing(self,delta)
+               ) :
+                self._traffic_tickets.append(True)
+        elif (isinstance(other,Car)):
+            self._hit_cars.append( self.loc == other.loc )
+        elif (isinstance(other,Pedestrian)):
+            if( other._is_squashing_me(self,delta) ):
+                self._hit_pedestrians.append(True)
+
+    def get_state_and_reward(self,world) :
+        # This function should be called by reinforcement module(like SARSA
+        # algorithm) outside for every timestep.
+        # TODO: define state function
+        return NotImplemented
+
 class Pedestrian(Movable) :
-    def __init__(self,x=None,y=None,time_schedule=[1,999,1]): #cross_speed=1
+    def __init__(self,x=None,y=None,time_per_cell=1.0,time_schedule=[1,999,1]): #cross_speed=1
         x = x or random.randint(10,World.road_length-10)
         y = y or World.line_range[0][-1] if random.randint(0,1) == 0 else World.line_range[3][-1]
         Movable.__init__(self,x,y)
 
         self.state = 0
         self.time = 0.0
+        self.time_per_cell = time_per_cell
         self.time_schedule = time_schedule
         self.goal = World.line_range[3][-1] if y == World.line_range[0][-1] else World.line_range[0][-1]
         self.direction = -1 if y > self.goal else 1
@@ -275,7 +294,7 @@ class Pedestrian(Movable) :
         if( self.time >= self.time_schedule[self.state] or self.loc[1] == self.goal ) :
             self.time = 0.0
             self.state += 1
-        elif( self.state == 1 and self.time >= 1.0 ) :
+        elif( self.state == 1 and self.time >= self.time_per_cell ) :
             self.time = 0.0
             self.loc[1] += self.direction
 
