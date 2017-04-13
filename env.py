@@ -43,7 +43,8 @@ class World(object) :
                 try :
                     obj_a.interact(obj_b,self.time_step)
                 except ViolateRule as e :
-                    self.message.append(e.message)
+                    if( isinstance(obj_a,MyCar) ):
+                        self.message.append(e.message)
 
         # Constraint Check(Interaction with wall..) or Delteable Object
         for obj in self.objects: pass #TODO: Nothing to do for now.
@@ -231,12 +232,8 @@ class Car(Movable) :
 class MyCar(Car) :
     def __init__(self,x,y,v):
         Car.__init__(self,x,y,v)
+        self.init_state()
 
-        # accumulated info for calculating reward
-        self._traffic_tickets = []
-        self._hit_pedestrians = []
-        self._hit_cars = []
-        self._prev_loc = self.loc
     def repre(self) :
         return {'colour':1} #my car is red colored!
 
@@ -259,11 +256,23 @@ class MyCar(Car) :
                 other._is_crossing(self,delta)
                ) :
                 self._traffic_tickets.append(True)
+                raise ViolateRule('Ticket!')
         elif (isinstance(other,Car)):
-            self._hit_cars.append( self.loc == other.loc )
+            if( (self.loc == other.loc).all() and
+                other not in self._hit_cars) :
+                self._hit_cars.add(other)
+                raise ViolateRule('Car Crash!')
         elif (isinstance(other,Pedestrian)):
             if( other._is_squashing_me(self,delta) ):
                 self._hit_pedestrians.append(True)
+                raise ViolateRule('Hit Pedestrian!')
+
+    def init_state(self):
+        # accumulated info for calculating reward
+        self._traffic_tickets = []
+        self._hit_pedestrians = []
+        self._hit_cars = set()
+        self._prev_loc = self.loc
 
     def get_state_and_reward(self,world) :
         # This function should be called by reinforcement module(like SARSA
