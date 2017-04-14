@@ -5,7 +5,7 @@ import numpy as np
 import math
 from asciimatics.screen import Screen
 
-class ViolateRule(Exception) :
+class ViolateRule() :
     def __init__(self,message):
         self.message = message
 
@@ -26,24 +26,28 @@ class World(object) :
         self.objects = []
 
         #debug message
+        self.debug_list = []
         self.message = []
 
-    def add_obj(self,obj) :
+    def add_obj(self,obj,debug=False) :
         assert(isinstance(obj,GameObject))
         self.objects.append(obj)
+        if( debug ) :
+            self.debug_list.append(obj)
         return self
 
     def tick(self) :
         # Tick
-        for obj in self.objects: obj.tick(self.time_step)
+        for obj in self.objects:
+            for e in obj.tick(self.time_step) :
+                if( e is not None and obj in self.debug_list ):
+                    self.message.append(e.message)
         # Interaction
         for obj_a in self.objects :
             for obj_b in self.objects :
                 if( obj_a == obj_b ) : continue
-                try :
-                    obj_a.interact(obj_b,self.time_step)
-                except ViolateRule as e :
-                    if( isinstance(obj_a,MyCar) ):
+                for e in obj_a.interact(obj_b,self.time_step) :
+                    if( e is not None and obj_a in self.debug_list ):
                         self.message.append(e.message)
 
         # Constraint Check(Interaction with wall..) or Delteable Object
@@ -107,6 +111,7 @@ class TrafficLights(GameObject) :
         if( self.time >= self.time_schedule[self.state] ) :
             self.time = 0.0
             self.state = (self.state+1)%len(self.time_schedule)
+        yield
     def get_state(self) :
         if(self.state == 0) : return 'yellow'
         elif(self.state == 1 ) : return 'red'
@@ -126,38 +131,54 @@ class TrafficLights(GameObject) :
         if (isinstance(other,Car)):
             if( self.get_state() == 'red'
                and self._is_crossing(other,delta) ):
-                raise ViolateRule('Ticket!')
+                yield ViolateRule('Ticket!')
+        yield
 
 class Movable(GameObject) :
     def __init__(self,x,y):
         GameObject.__init__(self,x,y)
 
 class Car(Movable) :
-    def __init__(self,x=None,y=None,v=None):
+    def __init__(self,x=None,y=None,v=None,state=None):
         x = x or 0
         y = y or random.randint(World.line_range[1][0],World.line_range[2][-1])
-        v = float(v or random.randint(1,3))
+        v = float(v if v is not None else random.randint(1,3))
+        state = state or 'go'
         Movable.__init__(self,x,y)
 
         self.real_loc = self.loc.astype(np.float32)
         self.maximum_vel = v
         self.vel = v
         self.direction = -1 if y in World.line_range[1] else 1
-        self.state = 'go' #'go', 'stop', 'park'
+        self.state = state #'go', 'stop', 'park', 'left', 'right'
         self.constraint_queue = [] #if it is empty, state change to 'go'
     def char(self) :
         if( self.state == 'park' ) :
             return 'P'
         elif( self.vel == 0.0 ) :
             return 'S' #completely stopped
-        elif( self.state == 'go' ) :
+        elif( self.state == 'go') :
             return u'◀' if( self.direction < 0 ) else u'▶'
         elif( self.state == 'stop' ) : #stopping...
             return u'↤' if( self.direction < 0 ) else u'↦'
+        elif( self.state == 'left' ):
+            return u'⬋' if( self.direction < 0 ) else u'⬈'
+        elif( self.state == 'right' ):
+            return u'⬉' if( self.direction < 0 ) else u'⬊'
         else :
             assert(False)
 
     def tick(self,delta) :
+        # Update Changing Lane
+        if( self.state == 'left' or self.state == 'right' ) :
+            self.real_loc[1] += (self.direction * (-1 if self.state == 'left' else 1))
+            self.state = 'go'
+
+            if( self.real_loc[1] < World.line_range[1][0] or
+                self.real_loc[1] > World.line_range[2][-1]) :
+                yield ViolateRule('Car Off Track!%f'%self.real_loc[1])
+                self.real_loc[1] = max(min(World.line_range[2][-1], self.real_loc[1]),World.line_range[1][0])
+
         # Update Speed
         if( self.state == 'go' ) :
             self.vel += delta * self.maximum_vel
@@ -171,6 +192,7 @@ class Car(Movable) :
         elif( self.real_loc[0] > World.road_length ) : self.real_loc[0] -= World.road_length
 
         self.loc = self.real_loc.astype(np.int32)
+        yield
 
     def _predict_loc(self,future_secs) :
         pre = np.copy(self.real_loc)
@@ -178,6 +200,8 @@ class Car(Movable) :
         return pre
 
     def _is_in_front(self,car) : #Does I in front of other car?
+        if( self.direction != car.direction ) : return True
+
         d = self._dist(car)
         if( self.real_loc[0] > car.real_loc[0] and
             self.real_loc[0] - car.real_loc[0] == d ) :
@@ -191,9 +215,15 @@ class Car(Movable) :
             return True if self.direction > 0 else False
 
     def _dist(self,car) :
-        # choose the short one as dist; due to cycling behavior
-        _t = abs(car.real_loc[0] - self.real_loc[0])
-        return min(_t, World.road_length-_t)
+        if( self.direction != car.direction ):
+            if( self.direction == 1 ) : # and it means car.direction == -1
+                return abs(car.real_loc[0] - self.real_loc[0])
+            else :
+                return abs(self.real_loc[0] - car.real_loc[0])
+        else :
+            # choose the short one as dist; due to cycling behavior
+            _t = abs(car.real_loc[0] - self.real_loc[0])
+            return min(_t, World.road_length-_t)
 
     def interact(self,other,delta) :
         if( len(self.constraint_queue) > 0 ) : # means, it is in the stop state.
@@ -214,7 +244,7 @@ class Car(Movable) :
                         self.constraint_queue.append(lambda o: other == o and other.get_state() == 'green')
         elif (isinstance(other,Car)):
             if( (other.loc == self.loc).all() ) :
-                raise ViolateRule('Car Crash!')
+                yield ViolateRule('Car Crash!')
             if( other.loc[1] == self.loc[1]) : # On the same lane
                 if( other._is_in_front(self) ) : #if other car is in front of me/TODO: since the road is cycle, it is not perfect.
                     # Check the safety distance
@@ -228,6 +258,7 @@ class Car(Movable) :
             if( crossing ) :
                 self.state = 'stop'
                 self.constraint_queue.append(lambda o: other.remove)
+        yield
 
 class MyCar(Car) :
     def __init__(self,x,y,v):
@@ -244,9 +275,13 @@ class MyCar(Car) :
         # This function will be called by reinforcement module(like SARSA
         # algorithm) outside for every time-step. Decide the next action for
         # next timestep.
-        assert action == 'go' or action == 'stop'
+        assert action == 'go' or action == 'stop' or action == 'left' or action =='right'
         self.state = action
 
+    def tick(self,delta) :
+        for e in super(MyCar, self).tick(delta) :
+            if( e is not None and 'Off' in e.message ): self._off_track.append(True)
+            yield e
     def interact(self,other,delta) :
         # this function will be called every tick(fine-grained time steps)
         # encode the state for timestep(coarse-grained), and accumulate
@@ -256,22 +291,24 @@ class MyCar(Car) :
                 other._is_crossing(self,delta)
                ) :
                 self._traffic_tickets.append(True)
-                raise ViolateRule('Ticket!')
+                yield ViolateRule('Ticket!')
         elif (isinstance(other,Car)):
             if( (self.loc == other.loc).all() and
                 other not in self._hit_cars) :
                 self._hit_cars.add(other)
-                raise ViolateRule('Car Crash!')
+                yield ViolateRule('Car Crash!')
         elif (isinstance(other,Pedestrian)):
             if( other._is_squashing_me(self,delta) ):
                 self._hit_pedestrians.append(True)
-                raise ViolateRule('Hit Pedestrian!')
+                yield ViolateRule('Hit Pedestrian!')
+        yield
 
     def init_state(self):
         # accumulated info for calculating reward
         self._traffic_tickets = []
         self._hit_pedestrians = []
         self._hit_cars = set()
+        self._off_track = []
         self._prev_loc = self.loc
 
     def get_state_and_reward(self,world) :
@@ -306,6 +343,7 @@ class Pedestrian(Movable) :
         elif( self.state == 1 and self.time >= self.time_per_cell ) :
             self.time = 0.0
             self.loc[1] += self.direction
+        yield
 
     def _is_squashing_me(self,car,delta) :
         dist_a = (self.loc - car.real_loc)[0]
@@ -315,7 +353,8 @@ class Pedestrian(Movable) :
     def interact(self,other,delta) :
         if (isinstance(other,Car) and
             self._is_squashing_me(other,delta) ):
-            raise ViolateRule('Hit Person!')
+            yield ViolateRule('Hit Person!')
+        yield
 
 if __name__ == "__main__":
     world = World()
@@ -343,7 +382,12 @@ if __name__ == "__main__":
             elif ev in [ord('p')]:
                 world.add_obj(Pedestrian())
             elif ev in [ord('c')]:
-                world.add_obj(Car())
+                car = Car()
+                world.add_obj(car,True)
+            elif ev in [ord('l')]:
+                car.state = 'left'
+            elif ev in [ord('r')]:
+                car.state = 'right'
             if go :
                 _seconds(1)
     Screen.wrapper(main_loop,arguments=[])
