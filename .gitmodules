@@ -1,0 +1,3 @@
+[submodule "asciicast2gif"]
+	path = asciicast2gif
+	url = https://github.com/pettarin/asciicast2gif.git

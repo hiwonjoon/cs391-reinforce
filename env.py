@@ -140,10 +140,10 @@ class Movable(GameObject) :
 
 class Car(Movable) :
     def __init__(self,x=None,y=None,v=None,state=None):
-        x = x or 0
-        y = y or random.randint(World.line_range[1][0],World.line_range[2][-1])
+        x = x if x is not None else 0
+        y = y if y is not None else random.randint(World.line_range[1][0],World.line_range[2][-1])
         v = float(v if v is not None else random.randint(1,3))
-        state = state or 'go'
+        state = state if state is not None else 'go'
         Movable.__init__(self,x,y)
 
         self.real_loc = self.loc.astype(np.float32)
@@ -169,6 +169,9 @@ class Car(Movable) :
             assert(False)
 
     def tick(self,delta) :
+        if( self.state == 'park' ) :
+            yield;return
+
         # Update Changing Lane
         if( self.state == 'left' or self.state == 'right' ) :
             self.real_loc[1] += (self.direction * (-1 if self.state == 'left' else 1))
@@ -226,6 +229,9 @@ class Car(Movable) :
             return min(_t, World.road_length-_t)
 
     def interact(self,other,delta) :
+        if( self.state == 'park' ) :
+            yield;return
+
         if( len(self.constraint_queue) > 0 ) : # means, it is in the stop state.
             self.constraint_queue = [q for q in self.constraint_queue if q(other) == False]
             if( len(self.constraint_queue) == 0 ):
@@ -246,11 +252,20 @@ class Car(Movable) :
             if( (other.loc == self.loc).all() ) :
                 yield ViolateRule('Car Crash!')
             if( other.loc[1] == self.loc[1]) : # On the same lane
-                if( other._is_in_front(self) ) : #if other car is in front of me/TODO: since the road is cycle, it is not perfect.
+                if( other._is_in_front(self) ) : #if other car is in front of me
                     # Check the safety distance
                     if( self._dist(other) < 3 and other.vel - self.vel <= 0) :
-                        self.state = 'stop'
-                        self.constraint_queue.append(lambda o: other == o and self._dist(other) > 2)
+                        if( other.state == 'park') :
+                            self.state = 'left'
+                        else :
+                            self.state = 'stop'
+                            self.constraint_queue.append(lambda o: other == o and self._dist(other) > 2)
+                elif( self._is_in_front(other) and self._dist(other) < 3 and
+                      self.vel < other.vel and
+                      (self.direction==1 and self.loc[1] == 3 or #TODO: Hard code warning!
+                       self.direction==-1 and self.loc[1] == 2)) :
+                    self.state = 'right'
+
         elif (isinstance(other,Pedestrian)):
             dist_a = (other.loc - self.real_loc)[0]
             dist_b = (other.loc - self._predict_loc(2.0))[0]
@@ -381,6 +396,8 @@ if __name__ == "__main__":
                 go = not go
             elif ev in [ord('p')]:
                 world.add_obj(Pedestrian())
+            elif ev in [ord('u')]:
+                world.add_obj(Car(x=random.choice(range(1,99)),y=random.choice([1,4]),v=0,state='park'))
             elif ev in [ord('c')]:
                 car = Car()
                 world.add_obj(car,True)
