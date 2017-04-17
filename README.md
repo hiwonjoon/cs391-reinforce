@@ -43,4 +43,25 @@ cd asciicast2gif
 ./asciicast2gif demo.json demo.gif
 ```
 
-Enojy :)
+### Examples recorded with learned policy
+
+1. Learend policy for *HonestCar* module
+
+![env](assets/honest.json.gif)
+
+2. Learend policy for *SafeCar* module
+
+![env](assets/safe.json.gif)
+
+3. Learend policy for *CruseCar* module
+
+![env](assets/cruse.json.gif)
+
+4. Learend policy for *FastCar(avoid parked car)* module
+
+![env](assets/park.json.gif)
+
+5. Learend policy for *FastCar(general case)* module
+
+![env](assets/fast.json.gif)
+
