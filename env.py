@@ -337,12 +337,12 @@ class MyCar(Car) :
         state = self._get_state(world)
         reward =  dist_moved * (0.5 if int(self._prev_loc[1]) == World.line_range[2][1]
                                else 0.3) + \
-                 int(dist_moved == 0) * (-1.0) + \
                  (-1.5 if reverse_drive else 0.0) + \
                  (np.count_nonzero(np.array(self._traffic_tickets))*-10.0) + \
                  (np.count_nonzero(np.array(self._hit_pedestrians))*-20.0) + \
                  len(self._hit_cars)*-5.0 + \
                  len(self._off_track)*-10.0
+                 #int(dist_moved == 0) * (-1.0) + \
 
         self.init_state()
         return state, reward
