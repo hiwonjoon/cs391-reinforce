@@ -329,8 +329,23 @@ class MyCar(Car) :
     def get_state_and_reward(self,world) :
         # This function should be called by reinforcement module(like SARSA
         # algorithm) outside for every timestep.
-        # TODO: define state function
-        return NotImplemented
+        dist_moved = (self.loc[0] - self._prev_loc[0])*self.direction % world.road_length
+        reverse_drive = False
+        if ( int(self._prev_loc[1]) in World.line_range[1]) :
+            reverse_drive = True
+
+        state = self._get_state(world)
+        reward =  dist_moved * (0.5 if int(self._prev_loc[1]) == World.line_range[2][1]
+                               else 0.3) + \
+                 int(dist_moved == 0) * (-1.0) + \
+                 (-1.5 if reverse_drive else 0.0) + \
+                 (np.count_nonzero(np.array(self._traffic_tickets))*-10.0) + \
+                 (np.count_nonzero(np.array(self._hit_pedestrians))*-20.0) + \
+                 len(self._hit_cars)*-5.0 + \
+                 len(self._off_track)*-10.0
+
+        self.init_state()
+        return state, reward
 
 class Pedestrian(Movable) :
     def __init__(self,x=None,y=None,time_per_cell=1.0,time_schedule=[1,999,1]): #cross_speed=1
