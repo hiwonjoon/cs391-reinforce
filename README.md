@@ -43,7 +43,7 @@ cd asciicast2gif
 ./asciicast2gif demo.json demo.gif
 ```
 
-### Examples recorded with learned policy
+### Examples recorded with learned module
 
 1. Learend policy for *HonestCar* module
 
@@ -65,3 +65,16 @@ cd asciicast2gif
 
 ![env](assets/fast.json.gif)
 
+### Examples with different combining policy
+
+1. Priority
+
+![env](assets/priority.json.gif)
+
+2. Maximum
+
+![env](assets/maximum.json.gif)
+
+3. Average
+
+![env](assets/average.json.gif)
